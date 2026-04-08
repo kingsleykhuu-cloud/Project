@@ -1,0 +1,121 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+import csv
+import os
+import pandas as pd
+from datetime import datetime
+
+DATA_FILE = "du_lieu_cua_hang.csv"
+ADMIN_PASSWORD = "123"
+
+class SuperStoreApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Hệ Thống Quản Lý Cửa Hàng Chuyên Nghiệp v3.0")
+        self.root.geometry("1000x700")
+        self.show_login_screen()
+
+    def show_login_screen(self):
+        self.login_frame = tk.Frame(self.root)
+        self.login_frame.place(relx=0.5, rely=0.5, anchor="center")
+        tk.Label(self.login_frame, text="ĐĂNG NHẬP HỆ THỐNG", font=("Arial", 16, "bold")).pack(pady=10)
+        self.ent_pw = tk.Entry(self.login_frame, show="*", width=30)
+        self.ent_pw.pack(pady=5)
+        self.ent_pw.focus()
+        tk.Button(self.login_frame, text="Vào hệ thống", command=self.check_login, bg="#3498db", fg="white", width=20).pack(pady=10)
+        self.root.bind('<Return>', lambda e: self.check_login())
+
+    def check_login(self):
+        if self.ent_pw.get() == ADMIN_PASSWORD:
+            self.login_frame.destroy()
+            self.setup_main_interface()
+        else:
+            messagebox.showerror("Lỗi", "Sai mật khẩu!")
+
+    def setup_main_interface(self):
+        if not os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Ngày", "Mặt hàng", "NCC", "SL", "Đơn giá", "Thành tiền", "Người chi"])
+
+        # --- Giao diện nhập liệu ---
+        frame_input = tk.LabelFrame(self.root, text="Thông tin phiếu chi", padx=15, pady=15)
+        frame_input.pack(fill="x", padx=20, pady=10)
+
+        labels = [("Mặt hàng:", 0, 0), ("Nhà CC:", 0, 2), ("Người chi:", 0, 4), ("Số lượng:", 1, 0), ("Đơn giá:", 1, 2)]
+        self.inputs = {}
+        for text, r, c in labels:
+            tk.Label(frame_input, text=text).grid(row=r, column=c, sticky="w")
+            e = tk.Entry(frame_input)
+            e.grid(row=r, column=c+1, padx=10, pady=5)
+            self.inputs[text] = e
+
+        tk.Button(frame_input, text="LƯU PHIẾU", command=self.add_record, bg="#27ae60", fg="white", width=15).grid(row=1, column=4, columnspan=2)
+
+        # --- Bảng hiển thị ---
+        self.tree = ttk.Treeview(self.root, columns=(1,2,3,4,5,6,7), show="headings")
+        cols = ["Ngày giờ", "Mặt hàng", "Nhà cung cấp", "SL", "Đơn giá", "Tổng cộng", "Nhân viên"]
+        for i, h in enumerate(cols, 1):
+            self.tree.heading(i, text=h)
+            self.tree.column(i, width=130, anchor="center")
+        self.tree.pack(fill="both", expand=True, padx=20)
+
+        # --- Chức năng báo cáo ---
+        frame_action = tk.Frame(self.root)
+        frame_action.pack(fill="x", padx=20, pady=15)
+
+        tk.Button(frame_action, text="XUẤT BÁO CÁO EXCEL & IN", command=self.export_excel, bg="#f39c12", fg="white", font=("Arial", 10, "bold"), padx=10).pack(side="left")
+        
+        self.lbl_total = tk.Label(frame_action, text="Tổng cộng: 0 VNĐ", font=("Arial", 16, "bold"), fg="red")
+        self.lbl_total.pack(side="right")
+
+        self.update_table()
+
+    def add_record(self):
+        try:
+            name = self.inputs["Mặt hàng:"].get()
+            supp = self.inputs["Nhà CC:"].get()
+            qty = float(self.inputs["Số lượng:"].get())
+            price = float(self.inputs["Đơn giá:"].get())
+            staff = self.inputs["Người chi:"].get()
+            total = qty * price
+            date = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+            if not name or not staff: raise ValueError
+            
+            with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow([date, name, supp, qty, f"{price:,.0f}", f"{total:,.0f}", staff])
+
+            for e in self.inputs.values(): e.delete(0, tk.END)
+            self.update_table()
+            messagebox.showinfo("Xong", "Đã lưu dữ liệu!")
+        except:
+            messagebox.showerror("Lỗi", "Vui lòng nhập đầy đủ và SL/Đơn giá phải là số!")
+
+    def update_table(self):
+        for i in self.tree.get_children(): self.tree.delete(i)
+        grand_total = 0
+        if os.path.exists(DATA_FILE):
+            df = pd.read_csv(DATA_FILE)
+            for _, row in df.iterrows():
+                self.tree.insert("", "end", values=list(row))
+                grand_total += float(str(row["Thành tiền"]).replace(",", ""))
+        self.lbl_total.config(text=f"TỔNG CHI: {grand_total:,.0f} VNĐ")
+
+    def export_excel(self):
+        try:
+            if not os.path.exists(DATA_FILE): return
+            df = pd.read_csv(DATA_FILE)
+            file_name = f"Bao_Cao_Chi_Tieu_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            df.to_excel(file_name, index=False)
+            
+            # Mở file Excel ngay lập tức để người dùng bấm In (Ctrl + P)
+            os.startfile(file_name)
+            messagebox.showinfo("Thành công", f"Đã xuất báo cáo: {file_name}\nBạn có thể nhấn Ctrl + P trong Excel để in ngay!")
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể xuất file: {e}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SuperStoreApp(root)
+    root.mainloop()
